@@ -216,9 +216,30 @@ impl<T> Hitables<T>
     }
 }
 
-fn color<T: Hitable>(r: &Ray, world: &Hitables<T>) -> V3 {
+#[allow(dead_code)]
+fn color_normal<T: Hitable>(r: &Ray, world: &Hitables<T>) -> V3 {
     match world.hit(r, 0.0, std::f32::MAX) {
         Some(rec) => 0.5 * V3(rec.normal.0 + 1.0, rec.normal.1 + 1.0, rec.normal.2 + 1.0),
+        None => {
+            let unit_d = unit_vector(r.direction());
+            let t = 0.5 * (unit_d.1 + 1.0);
+            (1.0 - t) * V3(1.0, 1.0, 1.0) + t * V3(0.5, 0.7, 1.0)
+        }
+    }
+}
+
+fn color<T: Hitable>(r: &Ray, world: &Hitables<T>) -> V3 {
+    // t_min at 0.001 to avoid 'shadow acne' problem
+    match world.hit(r, 0.001, std::f32::MAX) {
+        Some(rec) => {
+            let target = rec.p + rec.normal + random_in_unit_sphere();
+            0.5 *
+            color(&Ray {
+                       a: rec.p,
+                       b: target - rec.p,
+                   },
+                  world)
+        }
         None => {
             let unit_d = unit_vector(r.direction());
             let t = 0.5 * (unit_d.1 + 1.0);
@@ -252,6 +273,21 @@ impl Camera {
     }
 }
 
+// https://github.com/rust-lang/rust/issues/28570
+#[allow(unused_assignments)]
+fn random_in_unit_sphere() -> V3 {
+    let mut p = V3(0.0, 0.0, 0.0);
+    // do-while loop
+    while {
+              p = 2.0 *
+                  V3(rand::random::<f32>(),
+                     rand::random::<f32>(),
+                     rand::random::<f32>()) - V3(1.0, 1.0, 1.0);
+              p.squared_length() >= 1.0
+          } {}
+    p
+}
+
 fn main() {
     let nx = 200;
     let ny = 100;
@@ -270,14 +306,16 @@ fn main() {
     for y in (0..ny).rev() {
         for x in 0..nx {
             let mut c = V3(0., 0., 0.);
-            for s in 0..ns {
+            for _ in 0..ns {
                 let u = (rand::random::<f32>() + x as f32) / nx as f32;
                 let v = (rand::random::<f32>() + y as f32) / ny as f32;
                 let r = camera.get_ray(u, v);
-                let p = r.point_at(2.0);
                 c = c + color(&r, &world);
             }
             c = c / ns as f32;
+            // gamma correction of value 2
+            c = V3(c.0.sqrt(), c.1.sqrt(), c.2.sqrt());
+            // clip to rgb max
             let ir: i32 = (255.99 * c.0) as i32;
             let ig: i32 = (255.99 * c.1) as i32;
             let ib: i32 = (255.99 * c.2) as i32;
