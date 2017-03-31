@@ -1,4 +1,6 @@
+extern crate rand;
 use std::ops::{Add, Neg, Sub, Mul, Div};
+use rand::Rng;
 
 // Vec3
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -96,6 +98,14 @@ impl Div<f32> for V3 {
 
     fn div(self, rhs: f32) -> Self {
         V3(self.0 / rhs, self.1 / rhs, self.2 / rhs)
+    }
+}
+
+impl Div<V3> for f32 {
+    type Output = V3;
+
+    fn div(self, rhs: V3) -> V3 {
+        V3(self / rhs.0, self / rhs.1, self / rhs.2)
     }
 }
 
@@ -217,14 +227,36 @@ fn color<T: Hitable>(r: &Ray, world: &Hitables<T>) -> V3 {
     }
 }
 
+struct Camera {
+    origin: V3,
+    starting_pos: V3,
+    horizontal: V3,
+    vertical: V3,
+}
+
+impl Camera {
+    pub fn new() -> Self {
+        Camera {
+            origin: V3(0.0, 0.0, 0.0),
+            starting_pos: V3(-2.0, -1.0, -1.0),
+            horizontal: V3(4.0, 0.0, 0.0),
+            vertical: V3(0.0, 2.0, 0.0),
+        }
+    }
+
+    pub fn get_ray(&self, u: f32, v: f32) -> Ray {
+        Ray {
+            a: self.origin,
+            b: self.starting_pos + u * self.horizontal + v * self.vertical - self.origin,
+        }
+    }
+}
+
 fn main() {
     let nx = 200;
     let ny = 100;
-    let bot_left = V3(-2.0, -1.0, -1.0);
-    let horizontal = V3(4.0, 0.0, 0.0);
-    let vertical = V3(0.0, 2.0, 0.0);
-    let origin = V3(0.0, 0.0, 0.0);
-
+    let ns = 100;
+    let camera = Camera::new();
     let world = Hitables(vec![Sphere {
                                   center: V3(0.0, 0.0, -1.0),
                                   radius: 0.5,
@@ -237,14 +269,15 @@ fn main() {
 
     for y in (0..ny).rev() {
         for x in 0..nx {
-            let u = x as f32 / nx as f32;
-            let v = y as f32 / ny as f32;
-            let r = Ray {
-                a: origin,
-                b: bot_left + u * horizontal + v * vertical,
-            };
-            let p = r.point_at(2.0);
-            let c = color(&r, &world);
+            let mut c = V3(0., 0., 0.);
+            for s in 0..ns {
+                let u = (rand::random::<f32>() + x as f32) / nx as f32;
+                let v = (rand::random::<f32>() + y as f32) / ny as f32;
+                let r = camera.get_ray(u, v);
+                let p = r.point_at(2.0);
+                c = c + color(&r, &world);
+            }
+            c = c / ns as f32;
             let ir: i32 = (255.99 * c.0) as i32;
             let ig: i32 = (255.99 * c.1) as i32;
             let ib: i32 = (255.99 * c.2) as i32;

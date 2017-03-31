@@ -1,6 +1,7 @@
 [package]
+authors = ["connanp <connanp@gmail.com>"]
 name = "raytracer"
 version = "0.1.0"
-authors = ["connanp <connanp@gmail.com>"]
 
 [dependencies]
+rand = "0.3.15"
