@@ -119,30 +119,102 @@ impl Ray {
     }
 }
 
-fn hit_sphere(center: &V3, radius: f32, r: &Ray) -> f32 {
-    let oc = *r.origin() - *center;
-    let a = dot(r.direction(), r.direction());
-    let b = 2.0 * dot(&oc, r.direction());
-    let c = dot(&oc, &oc) - radius * radius;
-    let discriminant = b * b - 4.0 * a * c;
-    if discriminant < 0.0 {
-        -1.0
-    } else {
-        (-b - discriminant.sqrt()) / (2.0 * a)
-    }
-
+#[derive(Debug, Clone, Copy)]
+struct HitRecord {
+    t: f32,
+    p: V3,
+    normal: V3,
 }
 
-fn color(r: &Ray) -> V3 {
-    let t = hit_sphere(&V3(0.0, 0.0, -1.0), 0.5, r);
-    if t > 0.0 {
-        let normal = r.point_at(t) - V3(0.0, 0.0, -1.0);
-        let n = unit_vector(&normal);
-        return 0.5 * V3(n.0 + 1.0, n.1 + 1.0, n.2 + 1.0);
+impl HitRecord {
+    pub fn new() -> Self {
+        HitRecord {
+            t: 0.0,
+            p: V3(0.0, 0.0, 0.0),
+            normal: V3(0.0, 0.0, 0.0),
+        }
     }
-    let unit_d = unit_vector(r.direction());
-    let t = 0.5 * (unit_d.1 + 1.0);
-    (1.0 - t) * V3(1.0, 1.0, 1.0) + t * V3(0.5, 0.7, 1.0)
+}
+
+trait Hitable {
+    fn hit(&self, r: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord>;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Sphere {
+    center: V3,
+    radius: f32,
+}
+
+impl Hitable for Sphere {
+    fn hit(&self, r: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
+        let oc = *r.origin() - self.center;
+        let a = dot(r.direction(), r.direction());
+        let b = dot(&oc, r.direction());
+        let c = dot(&oc, &oc) - self.radius * self.radius;
+        let discriminant = b * b - a * c;
+        if discriminant > 0.0 {
+            let t = (-b - discriminant.sqrt()) / a;
+            if t < t_max && t > t_min {
+                let mut rec = HitRecord::new();
+                rec.t = t;
+                rec.p = r.point_at(t);
+                rec.normal = (rec.p - self.center) / self.radius;
+                return Some(rec);
+            }
+            // other direction
+            let t2 = (-b + discriminant.sqrt()) / a;
+            if t < t_max && t > t_min {
+                let mut rec = HitRecord::new();
+                rec.t = t2;
+                rec.p = r.point_at(t2);
+                rec.normal = (rec.p - self.center) / self.radius;
+                return Some(rec);
+            }
+        }
+
+        None
+    }
+}
+
+#[derive(Debug)]
+struct Hitables<T>(Vec<T>) where T: Hitable;
+
+impl<T> Hitables<T>
+    where T: Hitable
+{
+    fn new() -> Self {
+        Hitables(vec![])
+    }
+
+    fn hit(&self, r: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
+        let mut rec = HitRecord::new();
+        let mut closest = Some(t_max as f64);
+        for obj in &self.0 {
+            match obj.hit(r, t_min, closest.unwrap() as f32) {
+                Some(o) => {
+                    closest = Some(o.t as f64);
+                    rec = o
+                }
+                _ => (),
+            }
+        }
+        match closest {
+            Some(t) if t < t_max as f64 && t > t_min as f64 => Some(rec),
+            _ => None,
+        }
+    }
+}
+
+fn color<T: Hitable>(r: &Ray, world: &Hitables<T>) -> V3 {
+    match world.hit(r, 0.0, std::f32::MAX) {
+        Some(rec) => 0.5 * V3(rec.normal.0 + 1.0, rec.normal.1 + 1.0, rec.normal.2 + 1.0),
+        None => {
+            let unit_d = unit_vector(r.direction());
+            let t = 0.5 * (unit_d.1 + 1.0);
+            (1.0 - t) * V3(1.0, 1.0, 1.0) + t * V3(0.5, 0.7, 1.0)
+        }
+    }
 }
 
 fn main() {
@@ -153,6 +225,14 @@ fn main() {
     let vertical = V3(0.0, 2.0, 0.0);
     let origin = V3(0.0, 0.0, 0.0);
 
+    let world = Hitables(vec![Sphere {
+                                  center: V3(0.0, 0.0, -1.0),
+                                  radius: 0.5,
+                              },
+                              Sphere {
+                                  center: V3(0.0, -100.5, -1.0),
+                                  radius: 100.0,
+                              }]);
     println!("P3\n{} {}\n255", nx, ny);
 
     for y in (0..ny).rev() {
@@ -163,7 +243,8 @@ fn main() {
                 a: origin,
                 b: bot_left + u * horizontal + v * vertical,
             };
-            let c = color(&r);
+            let p = r.point_at(2.0);
+            let c = color(&r, &world);
             let ir: i32 = (255.99 * c.0) as i32;
             let ig: i32 = (255.99 * c.1) as i32;
             let ib: i32 = (255.99 * c.2) as i32;
