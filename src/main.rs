@@ -1,6 +1,5 @@
 extern crate rand;
 use std::ops::{Add, Neg, Sub, Mul, Div};
-use rand::Rng;
 
 // Vec3
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -35,6 +34,10 @@ fn cross(v1: &V3, v2: &V3) -> V3 {
 
 fn unit_vector(v: &V3) -> V3 {
     *v / v.length()
+}
+
+fn reflect(v: V3, n: V3) -> V3 {
+    v - 2.0 * dot(&v, &n) * n
 }
 
 impl Add for V3 {
@@ -134,6 +137,7 @@ struct HitRecord {
     t: f32,
     p: V3,
     normal: V3,
+    material: MaterialKind,
 }
 
 impl HitRecord {
@@ -142,6 +146,7 @@ impl HitRecord {
             t: 0.0,
             p: V3(0.0, 0.0, 0.0),
             normal: V3(0.0, 0.0, 0.0),
+            material: MaterialKind::None,
         }
     }
 }
@@ -151,9 +156,17 @@ trait Hitable {
 }
 
 #[derive(Debug, Clone, Copy)]
+enum MaterialKind {
+    None,
+    Metal(Metal),
+    Lambertian(Lambertian),
+}
+
+#[derive(Debug, Clone, Copy)]
 struct Sphere {
     center: V3,
     radius: f32,
+    material: MaterialKind,
 }
 
 impl Hitable for Sphere {
@@ -170,6 +183,7 @@ impl Hitable for Sphere {
                 rec.t = t;
                 rec.p = r.point_at(t);
                 rec.normal = (rec.p - self.center) / self.radius;
+                rec.material = self.material;
                 return Some(rec);
             }
             // other direction
@@ -179,6 +193,7 @@ impl Hitable for Sphere {
                 rec.t = t2;
                 rec.p = r.point_at(t2);
                 rec.normal = (rec.p - self.center) / self.radius;
+                rec.material = self.material;
                 return Some(rec);
             }
         }
@@ -228,23 +243,27 @@ fn color_normal<T: Hitable>(r: &Ray, world: &Hitables<T>) -> V3 {
     }
 }
 
-fn color<T: Hitable>(r: &Ray, world: &Hitables<T>) -> V3 {
+fn color<T: Hitable>(r: &Ray, world: &Hitables<T>, depth: i32) -> V3 {
     // t_min at 0.001 to avoid 'shadow acne' problem
     match world.hit(r, 0.001, std::f32::MAX) {
-        Some(rec) => {
-            let target = rec.p + rec.normal + random_in_unit_sphere();
-            0.5 *
-            color(&Ray {
-                       a: rec.p,
-                       b: target - rec.p,
-                   },
-                  world)
-        }
+        Some(rec) if depth < 50 => {
+                // TODO(connanp): must be a idiomatic way to dispatch the call without an exhaustive list here.
+                let (scatter_ray, attenuation) = match rec.material {
+                        MaterialKind::Metal(m) => m.scatter(r, &rec),
+                        MaterialKind::Lambertian(m) => m.scatter(r, &rec),
+                        MaterialKind::None => return V3(0.0, 0.0, 0.0),
+                    }
+                    .unwrap();
+                return attenuation * color(&scatter_ray, world, depth + 1);
+            }
         None => {
             let unit_d = unit_vector(r.direction());
             let t = 0.5 * (unit_d.1 + 1.0);
             (1.0 - t) * V3(1.0, 1.0, 1.0) + t * V3(0.5, 0.7, 1.0)
         }
+        // max depth
+        _ => V3(0.0, 0.0, 0.0),
+
     }
 }
 
@@ -288,6 +307,61 @@ fn random_in_unit_sphere() -> V3 {
     p
 }
 
+trait Material {
+    // Option is better than bool right?
+    // (scattered, attenuation)
+    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Ray, V3)>;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Lambertian {
+    albedo: V3,
+}
+
+impl Lambertian {
+    pub fn new(a: &V3) -> MaterialKind {
+        MaterialKind::Lambertian(Self { albedo: *a })
+    }
+}
+
+impl Material for Lambertian {
+    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Ray, V3)> {
+        let target = rec.p + rec.normal + random_in_unit_sphere();
+        Some((Ray {
+                  a: rec.p,
+                  b: target - rec.p,
+              },
+              self.albedo))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Metal {
+    albedo: V3,
+}
+
+impl Metal {
+    pub fn new(a: &V3) -> MaterialKind {
+        MaterialKind::Metal(Self { albedo: *a })
+    }
+}
+
+impl Material for Metal {
+    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Ray, V3)> {
+        let reflected = reflect(unit_vector(r_in.direction()), rec.normal);
+        let scattered = Ray {
+            a: rec.p,
+            b: reflected,
+        };
+        let attenuation = self.albedo;
+        match dot(scattered.direction(), &rec.normal) {
+            x if x > 0.0 => Some((scattered, attenuation)),
+            _ => None,
+        }
+    }
+}
+
+
 fn main() {
     let nx = 200;
     let ny = 100;
@@ -296,10 +370,22 @@ fn main() {
     let world = Hitables(vec![Sphere {
                                   center: V3(0.0, 0.0, -1.0),
                                   radius: 0.5,
+                                  material: Lambertian::new(&V3(0.8, 0.3, 0.3)),
                               },
                               Sphere {
                                   center: V3(0.0, -100.5, -1.0),
                                   radius: 100.0,
+                                  material: Lambertian::new(&V3(0.8, 0.8, 0.0)),
+                              },
+                              Sphere {
+                                  center: V3(1.0, 0.0, -1.0),
+                                  radius: 0.5,
+                                  material: Metal::new(&V3(0.8, 0.6, 0.2)),
+                              },
+                              Sphere {
+                                  center: V3(-1.0, 0.0, -1.0),
+                                  radius: 0.5,
+                                  material: Metal::new(&V3(0.8, 0.8, 0.8)),
                               }]);
     println!("P3\n{} {}\n255", nx, ny);
 
@@ -310,7 +396,7 @@ fn main() {
                 let u = (rand::random::<f32>() + x as f32) / nx as f32;
                 let v = (rand::random::<f32>() + y as f32) / ny as f32;
                 let r = camera.get_ray(u, v);
-                c = c + color(&r, &world);
+                c = c + color(&r, &world, 0);
             }
             c = c / ns as f32;
             // gamma correction of value 2
