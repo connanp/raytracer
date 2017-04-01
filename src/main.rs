@@ -247,15 +247,18 @@ fn color<T: Hitable>(r: &Ray, world: &Hitables<T>, depth: i32) -> V3 {
     // t_min at 0.001 to avoid 'shadow acne' problem
     match world.hit(r, 0.001, std::f32::MAX) {
         Some(rec) if depth < 50 => {
-                // TODO(connanp): must be a idiomatic way to dispatch the call without an exhaustive list here.
-                let (scatter_ray, attenuation) = match rec.material {
-                        MaterialKind::Metal(m) => m.scatter(r, &rec),
-                        MaterialKind::Lambertian(m) => m.scatter(r, &rec),
-                        MaterialKind::None => return V3(0.0, 0.0, 0.0),
-                    }
-                    .unwrap();
-                return attenuation * color(&scatter_ray, world, depth + 1);
+            // TODO(connanp): must be a idiomatic way to dispatch the call without an exhaustive list here.
+            let s_res = match rec.material {
+                MaterialKind::Metal(m) => m.scatter(r, &rec),
+                MaterialKind::Lambertian(m) => m.scatter(r, &rec),
+                MaterialKind::None => None
+            };
+            // Would this be better with if/if-lets ?
+            match s_res {
+                None => return V3(0.0, 0.0, 0.0),
+                Some((scatter_ray, attenuation)) => attenuation * color(&scatter_ray, world, depth + 1)
             }
+        }
         None => {
             let unit_d = unit_vector(r.direction());
             let t = 0.5 * (unit_d.1 + 1.0);
@@ -338,11 +341,13 @@ impl Material for Lambertian {
 #[derive(Debug, Clone, Copy)]
 struct Metal {
     albedo: V3,
+    fuzz: f32,
 }
 
 impl Metal {
-    pub fn new(a: &V3) -> MaterialKind {
-        MaterialKind::Metal(Self { albedo: *a })
+    pub fn new(a: &V3, fuzz: f32) -> MaterialKind {
+        let f = if fuzz < 1.0 { fuzz } else { 1.0 };
+        MaterialKind::Metal(Self { albedo: *a, fuzz: f })
     }
 }
 
@@ -351,7 +356,7 @@ impl Material for Metal {
         let reflected = reflect(unit_vector(r_in.direction()), rec.normal);
         let scattered = Ray {
             a: rec.p,
-            b: reflected,
+            b: reflected + self.fuzz * random_in_unit_sphere(),
         };
         let attenuation = self.albedo;
         match dot(scattered.direction(), &rec.normal) {
@@ -380,12 +385,12 @@ fn main() {
                               Sphere {
                                   center: V3(1.0, 0.0, -1.0),
                                   radius: 0.5,
-                                  material: Metal::new(&V3(0.8, 0.6, 0.2)),
+                                  material: Metal::new(&V3(0.8, 0.6, 0.2), 0.3),
                               },
                               Sphere {
                                   center: V3(-1.0, 0.0, -1.0),
                                   radius: 0.5,
-                                  material: Metal::new(&V3(0.8, 0.8, 0.8)),
+                                  material: Metal::new(&V3(0.8, 0.8, 0.8), 1.0),
                               }]);
     println!("P3\n{} {}\n255", nx, ny);
 
