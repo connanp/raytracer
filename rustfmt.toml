@@ -1,0 +1,7 @@
+max_width = 120
+ideal_width = 100
+wrap_comments = true
+comment_width = 80
+reorder_imports = true
+reorder_imported_names = true
+error_on_line_overflow = false
