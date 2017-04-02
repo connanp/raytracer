@@ -1,4 +1,4 @@
-use std::ops::{Add, Neg, Sub, Mul, Div};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
 extern crate rand;
 
@@ -32,8 +32,8 @@ pub fn cross(v1: &V3, v2: &V3) -> V3 {
        v1.0 * v2.1 - v1.1 * v2.0)
 }
 
-pub fn unit_vector(v: &V3) -> V3 {
-    *v / v.length()
+pub fn unit_vector(v: V3) -> V3 {
+    v / v.length()
 }
 
 pub fn reflect(v: V3, n: V3) -> V3 {
@@ -41,7 +41,7 @@ pub fn reflect(v: V3, n: V3) -> V3 {
 }
 
 pub fn refract(v: &V3, n: &V3, ni_over_nt: f32) -> Option<V3> {
-    let uv = unit_vector(v);
+    let uv = unit_vector(*v);
     let dt = dot(&uv, n);
     let discriminant = 1.0 - ni_over_nt * ni_over_nt * (1.0 - dt * dt);
     if discriminant > 0.0 {

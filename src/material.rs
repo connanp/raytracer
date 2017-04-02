@@ -1,6 +1,6 @@
-use vec::*;
-use ray::*;
 use collision::HitRecord;
+use ray::*;
+use vec::*;
 
 extern crate rand;
 
@@ -13,9 +13,8 @@ pub enum MaterialKind {
 }
 
 pub trait Material {
-    // Option is better than bool right?
-    // (scattered, attenuation)
-    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Ray, V3)>;
+    // (scattered, attenuation, success)
+    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> (Ray, V3, bool);
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -30,13 +29,14 @@ impl Lambertian {
 }
 
 impl Material for Lambertian {
-    fn scatter(&self, _: &Ray, rec: &HitRecord) -> Option<(Ray, V3)> {
+    fn scatter(&self, _: &Ray, rec: &HitRecord) -> (Ray, V3, bool) {
         let target = rec.p + rec.normal + random_in_unit_sphere();
-        Some((Ray {
-                  a: rec.p,
-                  b: target - rec.p,
-              },
-              self.albedo))
+        (Ray {
+             a: rec.p,
+             b: target - rec.p,
+         },
+         self.albedo,
+         true)
     }
 }
 
@@ -57,16 +57,16 @@ impl Metal {
 }
 
 impl Material for Metal {
-    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Ray, V3)> {
-        let reflected = reflect(unit_vector(r_in.direction()), rec.normal);
+    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> (Ray, V3, bool) {
+        let reflected = reflect(unit_vector(*r_in.direction()), rec.normal);
         let scattered = Ray {
             a: rec.p,
             b: reflected + self.fuzz * random_in_unit_sphere(),
         };
         let attenuation = self.albedo;
         match dot(scattered.direction(), &rec.normal) {
-            x if x > 0.0 => Some((scattered, attenuation)),
-            _ => None,
+            x if x > 0.0 => (scattered, attenuation, true),
+            _ => (scattered, attenuation, false),
         }
     }
 }
@@ -83,7 +83,7 @@ impl Dielectric {
 }
 
 impl Material for Dielectric {
-    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Ray, V3)> {
+    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> (Ray, V3, bool) {
         let outward_normal: V3;
         let ni_over_nt: f32;
         let cosine: f32;
@@ -110,14 +110,15 @@ impl Material for Dielectric {
             scattered = r;
         }
         if rand::random::<f32>() < reflect_prob {
-            scattered = reflect(unit_vector(r_in.direction()), rec.normal);
+            scattered = reflect(unit_vector(*r_in.direction()), rec.normal);
         }
 
-        Some((Ray {
-                  a: rec.p,
-                  b: scattered,
-              },
-              attenuation))
+        (Ray {
+             a: rec.p,
+             b: scattered,
+         },
+         attenuation,
+         true)
     }
 }
 

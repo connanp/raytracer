@@ -11,6 +11,8 @@ use collision::*;
 mod shape;
 use shape::*;
 
+use std::f32;
+
 extern crate rand;
 
 #[allow(dead_code)]
@@ -18,7 +20,7 @@ fn color_normal<T: Hitable>(r: &Ray, world: &Hitables<T>) -> V3 {
     match world.hit(r, 0.0, std::f32::MAX) {
         Some(rec) => 0.5 * V3(rec.normal.0 + 1.0, rec.normal.1 + 1.0, rec.normal.2 + 1.0),
         None => {
-            let unit_d = unit_vector(r.direction());
+            let unit_d = unit_vector(*r.direction());
             let t = 0.5 * (unit_d.1 + 1.0);
             (1.0 - t) * V3(1.0, 1.0, 1.0) + t * V3(0.5, 0.7, 1.0)
         }
@@ -27,37 +29,39 @@ fn color_normal<T: Hitable>(r: &Ray, world: &Hitables<T>) -> V3 {
 
 fn color<T: Hitable>(r: &Ray, world: &Hitables<T>, depth: i32) -> V3 {
     // t_min at 0.001 to avoid 'shadow acne' problem
-    match world.hit(r, 0.001, std::f32::MAX) {
-        Some(rec) if depth < 50 => {
-            // TODO(connanp): must be a idiomatic way to dispatch the call without an exhaustive list here.
+    if let Some(rec) = world.hit(r, 0.001, std::f32::MAX) {
+        if depth < 50 {
+            // TODO(connanp): must be a idiomatic way to dispatch the call without
+            // an exhaustive list here.
             let s_res = match rec.material {
                 MaterialKind::Metal(m) => m.scatter(r, &rec),
                 MaterialKind::Lambertian(m) => m.scatter(r, &rec),
                 MaterialKind::Dielectric(m) => m.scatter(r, &rec),
-                MaterialKind::None => None
+                MaterialKind::None => (*r, V3(0.0, 0.0, 0.0), false),
             };
             // Would this be better with if/if-lets ?
             match s_res {
-                None => return V3(0.0, 0.0, 0.0),
-                Some((scatter_ray, attenuation)) => attenuation * color(&scatter_ray, world, depth + 1)
+                (.., false) => return V3(0.0, 0.0, 0.0),
+                (scatter_ray, attenuation, true) => return attenuation * color(&scatter_ray, world, depth + 1),
             }
         }
-        None => {
-            let unit_d = unit_vector(r.direction());
-            let t = 0.5 * (unit_d.1 + 1.0);
-            (1.0 - t) * V3(1.0, 1.0, 1.0) + t * V3(0.5, 0.7, 1.0)
-        }
-        // max depth
-        _ => V3(0.0, 0.0, 0.0),
-
     }
+    let unit_d = unit_vector(*r.direction());
+    let t = 0.5 * (unit_d.1 + 1.0);
+    (1.0 - t) * V3(1.0, 1.0, 1.0) + t * V3(0.5, 0.7, 1.0)
 }
 
 fn main() {
-    let nx = 200;
-    let ny = 100;
-    let ns = 100;
-    let camera = Camera::new();
+    let nx = 400;
+    let ny = 200;
+    let ns = 50;
+
+    let camera = Camera::new(V3(-2.0, 2.0, 1.0),
+                             V3(0.0, 0.0, -1.0),
+                             V3(0.0, 1.0, 0.0),
+                             30.0,
+                             nx as f32 / ny as f32);
+    let R = (f32::consts::PI / 4.0).cos();
     let world = Hitables(vec![Sphere {
                                   center: V3(0.0, 0.0, -1.0),
                                   radius: 0.5,
@@ -82,8 +86,7 @@ fn main() {
                                   center: V3(-1.0, 0.0, -1.0),
                                   radius: -0.45,
                                   material: Dielectric::new(1.5),
-                              },]);
-
+                              }]);
     println!("P3\n{} {}\n255", nx, ny);
 
     for y in (0..ny).rev() {

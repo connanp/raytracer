@@ -15,7 +15,7 @@ impl Ray {
         &self.b
     }
 
-    pub fn point_at(self, t: f32) -> V3 {
+    pub fn point_at(&self, t: f32) -> V3 {
         self.a + t * self.b
     }
 }

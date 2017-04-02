@@ -1,7 +1,7 @@
-use vec::*;
-use ray::Ray;
 use collision::*;
 use material::MaterialKind;
+use ray::Ray;
+use vec::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Sphere {
@@ -29,7 +29,7 @@ impl Hitable for Sphere {
             }
             // other direction
             let t2 = (-b + discriminant.sqrt()) / a;
-            if t < t_max && t > t_min {
+            if t2 < t_max && t2 > t_min {
                 let mut rec = HitRecord::new();
                 rec.t = t2;
                 rec.p = r.point_at(t2);

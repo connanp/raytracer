@@ -1,6 +1,6 @@
-use vec::V3;
-use ray::Ray;
 use material::MaterialKind;
+use ray::Ray;
+use vec::V3;
 
 #[derive(Debug, Clone, Copy)]
 pub struct HitRecord {
@@ -37,19 +37,21 @@ impl<T> Hitables<T>
 
     pub fn hit(&self, r: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
         let mut rec = HitRecord::new();
-        let mut closest = Some(t_max as f64);
+        let mut closest = Some(t_max);
+        let mut hit_anything = false;
         for obj in &self.0 {
             match obj.hit(r, t_min, closest.unwrap() as f32) {
                 Some(o) => {
-                    closest = Some(o.t as f64);
-                    rec = o
+                    closest = Some(o.t);
+                    rec = o;
+                    hit_anything = true
                 }
                 _ => (),
             }
         }
-        match closest {
-            Some(t) if t < t_max as f64 && t > t_min as f64 => Some(rec),
-            _ => None,
+        if hit_anything {
+            return Some(rec);
         }
+        None
     }
 }
