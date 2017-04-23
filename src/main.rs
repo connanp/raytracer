@@ -10,10 +10,84 @@ mod collision;
 use collision::*;
 mod shape;
 use shape::*;
-
 use std::f32;
 
+use std::ops::Range;
+
 extern crate rand;
+extern crate rayon;
+
+use rayon::prelude::*;
+use rayon::range::Iter;
+
+
+fn random_scene() -> Hitables<Sphere> {
+    let n = 500;
+    let mut spheres: Vec<Sphere> = Vec::with_capacity(n);
+    spheres.push(Sphere::new(V3(0.0, -1000.0, -0.0),
+                             V3(0.0, -1000.0, -0.0),
+                             1000.0,
+                             V2(0.0, 1.0),
+                             Lambertian::new(&V3(0.5, 0.5, 0.5))));
+
+    let origin = V3(4.0, 0.2, 0.0);
+    for a in -11..11 {
+        for b in -11..11 {
+            let choose_mat = rand::random::<f32>();
+            let center = V3(a as f32 + 0.9 * rand::random::<f32>(),
+                            0.2,
+                            b as f32 + 0.9 * rand::random::<f32>());
+            if (center - origin).length() > 0.9 {
+                match choose_mat {
+                    m if m < 0.8 => {
+                        // diffuse
+                        spheres.push(Sphere::new(center,
+                                                 center + V3(0.0, 0.5 * rand::random::<f32>(), 0.0),
+                                                 0.2,
+                                                 V2(0.0, 1.0),
+                                                 Lambertian::new(&V3(rand::random::<f32>() * rand::random::<f32>(),
+                                                                     rand::random::<f32>() * rand::random::<f32>(),
+                                                                     rand::random::<f32>() * rand::random::<f32>()))))
+                    }
+                    m if m < 0.95 => {
+                        // metal
+                        spheres.push(Sphere::new(center,
+                                                 center,
+                                                 0.2,
+                                                 V2(0.0, 1.0),
+                                                 Metal::new(&V3(0.5 * (1.0 + rand::random::<f32>()),
+                                                                0.5 * (1.0 + rand::random::<f32>()),
+                                                                0.5 * (1.0 + rand::random::<f32>())),
+                                                            0.5 * rand::random::<f32>())))
+
+                    }
+                    _ => {
+                        // glass
+                        spheres.push(Sphere::new(center, center, 0.2, V2(0.0, 1.0), Dielectric::new(1.5)))
+                    }
+                }
+            }
+        }
+    }
+
+    spheres.push(Sphere::new(V3(0.0, 1.0, 0.0),
+                             V3(0.0, 1.0, 0.0),
+                             1.0,
+                             V2(0.0, 1.0),
+                             Dielectric::new(1.5)));
+    spheres.push(Sphere::new(V3(-4.0, 1.0, 0.0),
+                             V3(-4.0, 1.0, 0.0),
+                             1.0,
+                             V2(0.0, 1.0),
+                             Lambertian::new(&V3(0.4, 0.2, 0.1))));
+    spheres.push(Sphere::new(V3(4.0, 1.0, 0.0),
+                             V3(4.0, 1.0, 0.0),
+                             1.0,
+                             V2(0.0, 1.0),
+                             Metal::new(&V3(0.7, 0.6, 0.5), 0.0)));
+
+    Hitables(spheres)
+}
 
 #[allow(dead_code)]
 fn color_normal<T: Hitable>(r: &Ray, world: &Hitables<T>) -> V3 {
@@ -52,61 +126,62 @@ fn color<T: Hitable>(r: &Ray, world: &Hitables<T>, depth: i32) -> V3 {
 }
 
 fn main() {
-    let nx = 400;
-    let ny = 200;
+    // let nx = 1200;
+    // let ny = 800;
+    let nx = 768;
+    let ny = 486;
     let ns = 50;
 
-    let camera = Camera::new(V3(-2.0, 2.0, 1.0),
-                             V3(0.0, 0.0, -1.0),
+    let look_from = V3(13.0, 2.0, 3.0);
+    let look_at = V3(0.0, 0.0, 0.0);
+    let focus_plane = 10.0;
+    let aperture = 0.0;
+    let camera = Camera::new(look_from,
+                             look_at,
                              V3(0.0, 1.0, 0.0),
-                             30.0,
-                             nx as f32 / ny as f32);
-    let R = (f32::consts::PI / 4.0).cos();
-    let world = Hitables(vec![Sphere {
-                                  center: V3(0.0, 0.0, -1.0),
-                                  radius: 0.5,
-                                  material: Lambertian::new(&V3(0.1, 0.2, 0.5)),
-                              },
-                              Sphere {
-                                  center: V3(0.0, -100.5, -1.0),
-                                  radius: 100.0,
-                                  material: Lambertian::new(&V3(0.8, 0.8, 0.0)),
-                              },
-                              Sphere {
-                                  center: V3(1.0, 0.0, -1.0),
-                                  radius: 0.5,
-                                  material: Metal::new(&V3(0.8, 0.6, 0.2), 0.3),
-                              },
-                              Sphere {
-                                  center: V3(-1.0, 0.0, -1.0),
-                                  radius: 0.5,
-                                  material: Dielectric::new(1.5),
-                              },
-                              Sphere {
-                                  center: V3(-1.0, 0.0, -1.0),
-                                  radius: -0.45,
-                                  material: Dielectric::new(1.5),
-                              }]);
+                             20.0,
+                             nx as f32 / ny as f32,
+                             aperture,
+                             focus_plane,
+                             V2(0.0, 1.0)
+                             );
+
+    let world = random_scene();
     println!("P3\n{} {}\n255", nx, ny);
 
-    for y in (0..ny).rev() {
-        for x in 0..nx {
-            let mut c = V3(0., 0., 0.);
-            for _ in 0..ns {
-                let u = (rand::random::<f32>() + x as f32) / nx as f32;
-                let v = (rand::random::<f32>() + y as f32) / ny as f32;
-                let r = camera.get_ray(u, v);
-                c = c + color(&r, &world, 0);
-            }
-            c = c / ns as f32;
-            // gamma correction of value 2
-            c = V3(c.0.sqrt(), c.1.sqrt(), c.2.sqrt());
-            // clip to rgb max
-            let ir: i32 = (255.99 * c.0) as i32;
-            let ig: i32 = (255.99 * c.1) as i32;
-            let ib: i32 = (255.99 * c.2) as i32;
+    let y_mid = ny / 2;
+    let ly = 0..y_mid;
+    let lx = 0..nx;
+    let ry = y_mid..ny;
+    let rx = 0..nx;
 
-            println!("{} {} {}", ir, ig, ib);
+    let tracer = |columns: Range<u32>, rows: Range<u32>| {
+        let mut result = Vec::new();
+        for y in columns.rev() {
+            for x in rows.clone() {
+                let mut c = V3(0., 0., 0.);
+                for _ in 0..ns {
+                    let u = (rand::random::<f32>() + x as f32) / nx as f32;
+                    let v = (rand::random::<f32>() + y as f32) / ny as f32;
+                    let r = camera.get_ray(u, v);
+                    c = c + color(&r, &world, 0);
+                }
+                c = c / ns as f32;
+                // gamma correction of value 2
+                c = V3(c.0.sqrt(), c.1.sqrt(), c.2.sqrt());
+                c *= 255.99;
+
+                result.push(format!("{} {} {}", c.0 as i32, c.1 as i32, c.2 as i32));
+            }
         }
+        result
+    };
+    let (bottom, top) = rayon::join(|| tracer(ly, lx), || tracer(ry, rx));
+
+    for s in &top {
+        println!("{}", s)
+    }
+    for s in &bottom {
+        println!("{}", s)
     }
 }

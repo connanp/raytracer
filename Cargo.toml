@@ -5,3 +5,12 @@ version = "0.1.0"
 
 [dependencies]
 rand = "0.3.15"
+rayon = "0.7.0"
+
+[profile.release]
+opt-level = 2
+debug = true
+rpath = false
+lto = false
+debug-assertions = false
+panic = 'unwind'

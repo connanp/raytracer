@@ -1,6 +1,9 @@
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use std::ops::{Add, Div, Mul, MulAssign, Neg, Sub};
 
 extern crate rand;
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct V2(pub f32, pub f32);
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct V3(pub f32, pub f32, pub f32);
@@ -67,12 +70,19 @@ pub fn random_in_unit_sphere() -> V3 {
     p
 }
 
-
 impl Add for V3 {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self {
         V3(self.0 + rhs.0, self.1 + rhs.1, self.2 + rhs.2)
+    }
+}
+
+impl Add<f32> for V3 {
+    type Output = Self;
+
+    fn add(self, rhs: f32) -> Self {
+        V3(self.0 + rhs, self.1 + rhs, self.2 + rhs)
     }
 }
 
@@ -89,6 +99,14 @@ impl Sub for V3 {
 
     fn sub(self, rhs: Self) -> Self {
         V3(self.0 - rhs.0, self.1 - rhs.1, self.2 - rhs.2)
+    }
+}
+
+impl Sub<f32> for V3 {
+    type Output = Self;
+
+    fn sub(self, rhs: f32) -> Self {
+        V3(self.0 - rhs, self.1 - rhs, self.2 - rhs)
     }
 }
 
@@ -113,6 +131,14 @@ impl Mul<V3> for f32 {
 
     fn mul(self, rhs: V3) -> V3 {
         V3(self * rhs.0, self * rhs.1, self * rhs.2)
+    }
+}
+
+impl MulAssign<f32> for V3 {
+    fn mul_assign(&mut self, rhs: f32) {
+        self.0 *= rhs;
+        self.1 *= rhs;
+        self.2 *= rhs;
     }
 }
 

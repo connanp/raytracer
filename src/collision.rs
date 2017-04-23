@@ -55,3 +55,7 @@ impl<T> Hitables<T>
         None
     }
 }
+
+pub trait Moveable: Hitable {
+    fn center(&self, time: f32) -> V3;
+}
